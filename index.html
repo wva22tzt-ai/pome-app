@@ -31,11 +31,17 @@ select{width:100%;padding:10px;font:inherit;background:var(--card);color:var(--i
 @keyframes b{50%{opacity:.2}}
 .h{display:none}
 .line{transition:background .2s;border-radius:10px}.line.on{background:rgba(166,52,42,.13)}.line.on .han{color:var(--acc)}.title{transition:color .2s}.title.on{color:var(--acc)}
+.cells{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:14px 0}
+.cell{min-width:58px;padding:8px 4px;border:1px solid var(--line);border-radius:12px}
+.cell.cu{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc) inset}
+.cell .ch{font-size:1.6rem}.cell .sy{font-family:system-ui,sans-serif;color:var(--acc2);font-size:1rem;min-height:1.5em}.cell .sy.q{color:var(--mut)}
+.gb{font-size:1.15rem;font-family:system-ui,sans-serif}.gb:disabled{text-decoration:line-through}.gb.bad{background:#c62828;color:#fff;border-color:#c62828;opacity:1;animation:sh .35s}@keyframes sh{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}.msg.err{color:#c62828;font-weight:700;font-size:1.05rem}@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .msg.err{color:#ff7b72}}
+.gh{font-size:.9rem;color:var(--mut)}
 </style></head><body><div class="wrap">
 <h1>汉诗 朗诵 练习</h1>
 <select id="sel"></select>
-<div class="tabs"><button data-m="1" class="on">① 따라 읽기</button><button data-m="2">② 한자 보고 읽기</button></div>
-<div class="card">
+<div class="tabs"><button data-m="1" class="on">① 따라 읽기</button><button data-m="2">② 한자 보고 읽기</button><button data-m="3">③ 병음 게임</button></div>
+<div class="card" id="main">
 <div class="title" id="t"></div><div class="by" id="a"></div>
 <div id="lines"></div>
 <div class="bar" id="b1">
@@ -47,11 +53,14 @@ select{width:100%;padding:10px;font:inherit;background:var(--card);color:var(--i
 <button class="btn r" id="rec">🎙 녹음 시작</button>
 <button class="btn" id="mine" disabled>▶ 내 목소리</button>
 <button class="btn g" id="cmp" disabled>⇄ 비교해서 듣기</button>
+<button class="btn g h" id="fb">📱 녹음 앱으로 녹음하기</button>
 </div>
 <div class="msg" id="msg"></div>
 </div>
+<div class="card h" id="game"></div>
 <p class="msg">② 단계는 마이크 허용이 필요해요. 녹음은 이 기기 안에서만 재생되고 저장되지 않아요.</p>
 </div>
+<input type="file" id="fi" accept="audio/*" capture style="display:none">
 <audio id="au" preload="auto"></audio><audio id="me"></audio>
 <script>
 const POEMS=[{
@@ -89,7 +98,7 @@ function render(){
  $('play').textContent='▶ 듣기';
 }
 function setMode(m){mode=m;document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',+b.dataset.m==m));
- $('b2').classList.toggle('h',m!=2);render();
+ $('b2').classList.toggle('h',m!=2);$('main').classList.toggle('h',m==3);$('game').classList.toggle('h',m!=3);if(m==3){au.pause();gStart()}else render();
  $('msg').textContent=m==1?'먼저 음성을 듣고, 독음을 보며 한 줄씩 따라 읽어 보세요.':'독음 없이 한자만 보고 낭송해 보세요. 녹음 후 내 목소리를 들어 볼 수 있어요.';}
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>setMode(+b.dataset.m));
 $('sel').onchange=()=>setMode(mode);
@@ -111,9 +120,49 @@ $('rec').onclick=async()=>{
    $('msg').textContent='녹음 완료! 내 목소리를 들어 보세요.';};
   au.pause();rec.start();$('rec').textContent='⏹ 녹음 끝내기';
   $('msg').innerHTML='<span class="rec"></span>녹음 중… 시를 낭송해 보세요.';
- }catch(e){$('msg').textContent='마이크를 사용할 수 없어요. 브라우저 설정에서 마이크 권한을 허용해 주세요.'}};
+ }catch(e){$('msg').textContent='마이크를 사용할 수 없어요. 브라우저 설정에서 마이크 권한을 허용하거나, 아래 버튼으로 녹음해 주세요.';$('fb').classList.remove('h')}};
 $('mine').onclick=()=>{au.pause();me.currentTime=0;me.play()};
 $('cmp').onclick=()=>{me.pause();cmpOn=true;au.currentTime=0;au.play();$('msg').textContent='선생님 음성 → 내 음성 순서로 재생돼요.'};
+$('fb').onclick=()=>$('fi').click();
+$('fi').onchange=()=>{const f=$('fi').files[0];if(!f)return;if(myUrl)URL.revokeObjectURL(myUrl);
+ myUrl=URL.createObjectURL(f);me.src=myUrl;$('mine').disabled=$('cmp').disabled=false;$('msg').textContent='녹음 완료! 내 목소리를 들어 보세요.'};
+const g={mode:'tone',k:1,o:[],r:0,score:0,streak:0,miss:0,bl:[],f:0,opts:null,tiles:[],best:0,done:false,msg:''};
+const MK={a:'āáǎà',e:'ēéěè',i:'īíǐì',o:'ōóǒò',u:'ūúǔù','ü':'ǖǘǚǜ'};
+const bs=s=>s.normalize('NFD').replace(/[\u0300\u0301\u0304\u030C]/g,'').normalize('NFC');
+const wt=(b,t)=>{let i=b.search(/[ae]/);if(i<0)i=b.indexOf('ou');if(i<0)for(let k=b.length-1;k>=0;k--)if('iouü'.includes(b[k])){i=k;break}
+ return i<0?b:b.slice(0,i)+MK[b[i]][t-1]+b.slice(i+1)};
+const shuf=a=>a.map(x=>[Math.random(),x]).sort((p,q)=>p[0]-q[0]).map(x=>x[1]);
+const gL=()=>cur.lines[g.o[g.r]],gSy=()=>gL().p.toLowerCase().split(' ');
+function gStart(){g.o=shuf([...cur.lines.keys()]);g.r=0;g.score=0;g.streak=0;g.miss=0;g.done=false;gLine()}
+function gLine(){const sy=gSy(),all=[...Array(sy.length).keys()];
+ g.bl=g.mode=='order'?all:shuf(all).slice(0,Math.min(g.k,all.length)).sort((a,b)=>a-b);
+ g.err=false;g.f=0;g.opts=null;g.tiles=shuf(sy.map(s=>({s,u:false})));
+ g.msg=g.mode=='order'?'병음을 순서대로 눌러 보세요.':'빈칸에 알맞은 병음(성조!)을 골라요.';gRender()}
+function gRender(){const E=$('game');
+ if(g.done){const st=g.miss==0?3:g.miss<=3?2:1;g.best=Math.max(g.best,g.score);
+  E.innerHTML=`<div class="title">${'⭐'.repeat(st)}</div><div class="gh">점수 ${g.score}점 · 틀린 횟수 ${g.miss}번 · 최고 ${g.best}점</div><p>${st==3?'완벽해요! 빈칸 수를 늘려 더 어렵게 도전해 보세요.':'한 번 더 하면 더 잘 외워져요!'}</p><div class="bar"><button class="btn r" id="gs">다시 하기</button></div>`;return}
+ const L=gL(),ch=[...L.h.replace(/[，。,.]/g,'')],sy=gSy(),fin=g.f>=g.bl.length;
+ const cells=sy.map((s,i)=>{const bi=g.bl.indexOf(i),show=bi<g.f;
+  return `<div class="cell${bi==g.f?' cu':''}"><div class="ch">${ch[i]}</div><div class="sy${show?'':' q'}">${show?s:'?'}</div></div>`}).join('');
+ let body='';
+ if(fin)body=`<p class="gh">${L.m}</p><p>🗣 소리 내어 읽어 보세요: <b>${L.p}</b></p><div class="bar"><button class="btn" id="gn">${g.r>=g.o.length-1?'결과 보기':'다음 줄 ▶'}</button></div>`;
+ else{if(g.mode=='tone'&&!g.opts){const s=sy[g.bl[g.f]],b=bs(s),oth=shuf([...new Set([1,2,3,4].map(t=>wt(b,t)))].filter(x=>x!=s)).slice(0,3);
+   g.opts=shuf([s,...oth]).map(x=>({s:x,bad:false}))}
+  const arr=g.mode=='order'?g.tiles:g.opts;
+  body='<div class="bar">'+arr.map((t,i)=>t.u?'':`<button class="btn g gb${t.bad?' bad':''}" data-i="${i}"${t.bad?' disabled':''}>${t.bad?'✗ ':''}${t.s}</button>`).join('')+'</div>'}
+ E.innerHTML=`<div class="bar"><button class="btn g${g.mode=='tone'?' on':''}" data-md="tone">🎵 성조 고르기</button><button class="btn g${g.mode=='order'?' on':''}" data-md="order">🔀 순서 맞추기</button></div>`
+  +(g.mode=='tone'?`<div class="opt">빈칸 수 ${[1,2,3,5].map(k=>`<button class="btn g${g.k==k?' on':''}" data-lv="${k}">${k==5?'전부':k}</button>`).join('')}</div>`:'')
+  +`<div class="gh" style="margin-top:12px">${g.r+1}/${g.o.length}줄 · 점수 ${g.score} · 연속 ${g.streak}🔥</div><div class="cells">${cells}</div><div class="msg${g.err?' err':''}">${g.msg}</div>${body}`}
+function gPick(i){const need=gSy()[g.bl[g.f]],ord=g.mode=='order',t=ord?g.tiles[i]:g.opts[i];
+ if(t.s==need){g.score+=10+(g.streak>=3?5:0);g.streak++;g.msg='정답! 👍';g.err=false;if(ord)t.u=true;g.f++;g.opts=null}
+ else{g.streak=0;g.miss++;g.msg='❌ 오답이에요! 다시 골라 보세요.';g.err=true;if(!ord)t.bad=true}
+ gRender()}
+$('game').onclick=e=>{const b=e.target.closest('button');if(!b)return;const d=b.dataset;
+ if(d.md){g.mode=d.md;gStart()}else if(d.lv){g.k=+d.lv;gStart()}
+ else if(b.id=='gl'){au.currentTime=0;au.play()}
+ else if(b.id=='gs')gStart();
+ else if(b.id=='gn'){if(g.r>=g.o.length-1){g.done=true;gRender()}else{g.r++;gLine()}}
+ else if(d.i!==undefined)gPick(+d.i)};
 function hl(){const s=cur.s,e=cur.e,t=au.currentTime;let k=-2;
  if(s&&!(au.paused&&t==0)&&t<e){k=-1;for(let i=0;i<s.length;i++)if(t>=s[i])k=i}
  $('t').classList.toggle('on',k==-1);
